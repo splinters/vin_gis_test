@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test</title>
+    	<!-- CSS FILES -->
+	<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/uikit@latest/dist/css/uikit.min.css">
+
+	<!-- JS FILES -->
+	<script src="https://cdn.jsdelivr.net/npm/uikit@latest/dist/js/uikit.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/uikit@latest/dist/js/uikit-icons.min.js"></script>
+
+    <script src="http://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-fullscreen/v1.0.1/Leaflet.fullscreen.min.js'></script>
+    <link href='https://api.mapbox.com/mapbox.js/plugins/leaflet-fullscreen/v1.0.1/leaflet.fullscreen.css' rel='stylesheet' />
+
+    <style>
+      #map {
+        border: 1px solid #E5E5E5;
+        border-radius: 8px;
+        height: 400px; width: auto;
+        box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        /*position: absolute; top:5px; bottom:5px; right:0; left:0;*/
+      }
+
+      .leaflet-control-layers {
+        font-size: small !important;
+        /*width: 90%;*/
+        /*background: rgba(226, 230, 255, 0.5);*/
+        border-radius: 8px;
+        border: 2px solid rgba(0,0,0,0.0);
+        text-align: left;
+    }
+    </style>
+
+
+</head>
+<body>
+     <div class="uk-flex uk-flex-center uk-flex-middle uk-height-viewport uk-position-z-index uk-position-relative" data-uk-height-viewport="min-height: 400">
+
+
+     <div class="uk-text-center" uk-grid>
+         <div class="uk-width-1-1@m">
+             <div class="uk-card uk-card-default uk-card-body">
+                <div class="js-upload uk-placeholder uk-text-center" style="backgroud-color:green">
+                <span uk-icon="icon: cloud-upload"></span>
+                <span class="uk-text-middle">Upload shp and shx  file<br></span>
+                <div uk-form-custom>
+                    <input type="file" multiple>
+                    <span class="uk-link">Drop or press here</span>
+                </div>
+                <progress id="js-progressbar" class="uk-progress" value="0" max="100" hidden></progress>
+                </div>
+                <textarea id="uploadresults" rows="5" cols="40" readonly></textarea>
+            </div>
+         </div>
+
+        <div class="uk-width-1-1@m">
+            <div class="uk-card uk-card-default uk-card-body">
+                 <div id="map"></div>
+            </div>
+        </div>
+
+         <div class="uk-width-1-1@m">
+                 <div id="imageContainer">
+
+                </div>
+         </div>
+     </div>
+
+    <!-- FOOT -->
+    <div class="uk-position-bottom-center uk-position-small">
+      <span class="uk-text-small uk-text-center">© 2023</span>
+    </div>
+    <!-- /FOOT -->
+   </div>
+
+<script>
+
+
+    var uploadresults = document.getElementById("uploadresults");
+    var bar = document.getElementById('js-progressbar');
+    var geojsonLayer = null;
+    var map;
+
+    UIkit.upload('.js-upload', {
+        //url: '/api/upload',
+        url: '/api/process',
+        multiple: true,
+        filelimit: 7, //
+        //type: 'json', //
+        concurrent: 7, //
+        enctype: "multipart/form-data",
+
+        beforeSend: function (environment) {
+            console.log('beforeSend', arguments);
+            var {data, method, headers, xhr, responseType} = environment;
+	        console.log(method)
+	        bar.hidden = false;
+        },
+        beforeAll: function () {
+            console.log('beforeAll', arguments);
+        },
+        load: function () {
+            console.log('load', arguments);
+        },
+        error: function () {
+            console.log('error', arguments);
+            uploadresults.value = arguments[0].xhr.responseText;
+        },
+        complete: function (responce) {
+            bar.hidden = true;
+            console.log('complete', arguments);
+            if (JSON.parse(arguments[0].response).file_size_error) {
+                alert('error size');
+            }
+            result = JSON.parse(arguments[0].response)
+            //resulttxt = arguments[0].responseText
+            //TODO show protocol
+            if (result.log) {
+                uploadresults.value = result.log
+            }
+            if (result.image) {
+                image = result.image
+                const imageContainer = document.getElementById('imageContainer');
+                const img = document.createElement('img');
+                img.setAttribute('src', image);
+                img.setAttribute('width', '90%'); // size
+                imageContainer.innerHTML = ''; // clear
+                imageContainer.appendChild(img);
+
+                //map.panBy([1,1])
+                //map.invalidateSize(); // optional for map object
+            }
+            if (result.geojson) {
+                addGeoJSONLayer(result.geojson);
+            }
+        },
+
+        loadStart: function (e) {
+            //console.log('loadStart', arguments);
+            bar.hidden = false
+            // bar.removeAttribute('hidden');
+            bar.max = e.total;
+            bar.value = e.loaded;
+        },
+
+        progress: function (e) {
+            //console.log('progress', arguments);
+            bar.max = e.total;
+            bar.value = e.loaded;
+        },
+
+        loadEnd: function (e) {
+            //console.log('loadEnd', arguments);
+            bar.max = e.total;
+            bar.value = e.loaded;
+        },
+
+        completeAll: function (e) {
+            console.log('completeAll', arguments);
+
+            setTimeout(function () {
+                bar.hidden = true
+                // bar.setAttribute('hidden', 'hidden');
+            }, 1000);
+            uploadresults.value += "\n\nCompleted.";
+            result = JSON.parse(arguments[0].response)
+        }
+
+    });
+
+    /* Basemap Layers */
+    var cartoLight = L.tileLayer("https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      maxNativeZoom: 21,
+      attribution: '&copy; CartoDB'
+    });
+    var osmLayer = new L.TileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {maxZoom: 20, attribution: ''});
+    var googleSat = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{
+        maxZoom: 20,
+        subdomains:['mt0','mt1','mt2','mt3']
+    });
+
+    map = new L.Map('map', {
+        //editable: true,
+        center: [45, 45],
+        zoom: 1,
+        attributionControl: false,
+        fullscreenControl: true
+    });
+
+    var baseLayers = {
+        "Openstreet": osmLayer,
+        "Light":     cartoLight,
+        "Google Sat": googleSat,
+
+      };
+    var overlays = {
+      };
+
+    layersControl = new L.Control.Layers(baseLayers, overlays, {
+        collapsed: true  //false
+    });
+
+    map.addControl(layersControl);
+    osmLayer.addTo(map);
+
+
+    // Function to add GeoJSON layer to the map
+    function addGeoJSONLayer(geojsonData) {
+        // If the GeoJSON layer exists, remove it from the map and memory
+        if (geojsonLayer !== null) {
+            map.removeLayer(geojsonLayer);
+            geojsonLayer = null;
+        }
+
+        // Create a new GeoJSON layer
+        geojsonLayer = L.geoJSON(geojsonData, {
+            style: function(feature) {
+                return { color: feature.properties.color };
+            }
+        }).addTo(map);
+
+        // Fit the map to the bounds of the GeoJSON layer
+        map.fitBounds(geojsonLayer.getBounds());
+    }
+
+</script>
+
+</body>
+</html>
