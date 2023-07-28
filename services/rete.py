@@ -65,13 +65,13 @@ class Rete():
 
     def group_lines(self):
         lines = []
-        # Розділити MultiLineString на окремі лінії
+        # Split MultiLineString into separate lines
         if isinstance(self.streets_geometry, MultiLineString):
             lines.extend(list(self.streets_geometry.geoms))
         elif isinstance(self.streets_geometry, LineString):
             lines.append(self.streets_geometry)
 
-        # Групувати лінії за відстанню та кутами стикання
+        # Group lines by distance and contact angles
         grouped_lines = []
         while lines:
             current_line = lines.pop(0)
@@ -91,7 +91,7 @@ class Rete():
         return grouped_lines
 
     def are_perpendicular(self, line1, line2):
-        # Обчислити кут стикання між двома лініями
+        # Calculate the contact angle between the two lines
         # angle_radians = np.abs(LineString(line1).difference(LineString(line2)).angle)
         dx1, dy1 = line1.coords[-1][0] - line1.coords[0][0], line1.coords[-1][1] - line1.coords[0][1]
         dx2, dy2 = line2.coords[-1][0] - line2.coords[0][0], line2.coords[-1][1] - line2.coords[0][1]
@@ -100,7 +100,7 @@ class Rete():
         return angle_degrees < self.angle_threshold
 
     def get_angle_difference(self, line1, line2):
-        # Обчислити кут стикання між двома лініями
+        # Calculate the contact angle between the two lines
         dx1, dy1 = line1.coords[-1][0] - line1.coords[0][0], line1.coords[-1][1] - line1.coords[0][1]
         dx2, dy2 = line2.coords[-1][0] - line2.coords[0][0], line2.coords[-1][1] - line2.coords[0][1]
         angle_radians = np.arccos((dx1 * dx2 + dy1 * dy2) / (np.hypot(dx1, dy1) * np.hypot(dx2, dy2)))
@@ -120,18 +120,18 @@ class Rete():
     def lines_to_image(self, grouped_lines, scale = 1000):
         bounds = self.get_bounds(self.grouped_lines)
 
-        # Обчислити розміри зображення на основі географічних координат
+        # Calculate image dimensions based on geographic coordinates
         scale_x = scale / (bounds.maxx - bounds.minx)
         scale_y = scale / (bounds.maxy - bounds.miny)
         width = int(np.ceil((bounds.maxx - bounds.minx) * scale_x))
         height = int(np.ceil((bounds.maxy - bounds.miny) * scale_y))
 
-        # Створимо пусте зображення
+        # create an empty image
         image = np.zeros((height, width, 3), dtype=np.uint8) * 255
 
-        # Позначимо кожну групу ліній унікальним кольором
+        # Пdesignate each group of lines with a unique color
         for idx, group in enumerate(grouped_lines):
-            color = tuple(int(255 * x) for x in np.random.rand(3))  # Випадковий колір для кожної вулиці
+            color = tuple(int(255 * x) for x in np.random.rand(3))  # Random color for each street
             for line in group:
                 coords = np.array(line.coords)
                 coords[:, 0] = (coords[:, 0] - bounds.minx) * scale_x
@@ -148,16 +148,16 @@ class Rete():
         # Create white canvas with OpenCV
         white_image = np.ones((height, width, 3), dtype=np.uint8) * 255
 
-        # Копіювати канали зображення у біле зображення
+        # Copy image channels to white image
         white_image[:, :, 0] = image[:, :, 0]
         white_image[:, :, 1] = image[:, :, 1]
         white_image[:, :, 2] = image[:, :, 2]
 
-        # Додати темно-сірі осі з OpenCV
+        # Add dark gray axes with OpenCV
         cv2.line(white_image, (0, height - 1), (width - 1, height - 1), (100, 100, 100), 2)
         cv2.line(white_image, (0, 0), (0, height - 1), (100, 100, 100), 2)
 
-        # Додати округлені координати текстом з OpenCV
+        # Add rounded coordinates with text from OpenCV
         font = cv2.FONT_HERSHEY_SIMPLEX
         font_scale = 0.5
         font_thickness = 1
